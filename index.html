@@ -1,5 +1,4 @@
-﻿//test
-<!doctype html>
+﻿<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
@@ -3964,7 +3963,7 @@
     <button class="legendPeek right" id="legendPeekRight" title="鳶ノ巣の手牌を見る">鳶ノ巣 →</button>
 
     <div class="iconButtons">
-      <button class="iconBtn" id="settings" title="新しい局">新局</button>
+      <button class="iconBtn" id="settings" title="設定">設定</button>
       <button class="iconBtn" id="exit" title="おすすめを切る">自動打牌</button>
       <select class="cpuSelect" id="cpuLevel" title="他家の強さ">
         <option value="1">CPU Lv1</option>
@@ -4281,7 +4280,6 @@
       </div>
     </section>
 
-    <button class="newRound" id="newHand">新しい局</button>
     <button class="titleReturn" id="titleReturn">タイトルへ戻る</button>
 
     <section class="simPanel collapsed">
@@ -10406,6 +10404,7 @@
       courseSections().forEach(course => course.addEventListener("click", handleCourseClick));
       ui.startGameBtn?.addEventListener("click", startGameFromMenu);
       ui.legendNightBtn?.addEventListener("click", startLegendNight);
+      ui.titleReturn?.addEventListener("click", () => returnToTitle(true));
       ui.legendPeekLeft?.addEventListener("click", () => toggleLegendPeek("a"));
       ui.legendPeekRight?.addEventListener("click", () => toggleLegendPeek("b"));
       ui.battleMode.addEventListener("change", () => {
