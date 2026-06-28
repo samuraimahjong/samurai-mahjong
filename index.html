@@ -10404,6 +10404,8 @@
 
       hydrateLessonTiles(document);
       courseSections().forEach(course => course.addEventListener("click", handleCourseClick));
+      ui.startGameBtn?.addEventListener("click", startGameFromMenu);
+      ui.legendNightBtn?.addEventListener("click", startLegendNight);
       ui.legendPeekLeft?.addEventListener("click", () => toggleLegendPeek("a"));
       ui.legendPeekRight?.addEventListener("click", () => toggleLegendPeek("b"));
       ui.battleMode.addEventListener("change", () => {
