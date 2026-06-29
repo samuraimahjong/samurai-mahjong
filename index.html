@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
@@ -4732,14 +4732,8 @@
         <label for="simLevelA">上家AI</label><select id="simLevelA"></select>
         <label for="simLevelB">下家AI</label><select id="simLevelB"></select>
       </div>
-      <div class="simPresetGrid" id="simPresetGrid">
-        <button type="button" data-levels="10,10,10" title="同じ強さで基準確認">基準</button>
-        <button type="button" data-levels="10,13,17" title="今の放銃率を見る相手">守備検証</button>
-        <button type="button" data-levels="12,17,20" title="格上に通用するか確認">格上検証</button>
-      </div>
       <button id="benchmarkMode">強AI対戦 OFF</button>
-      <button id="samuraiStyle">samurAi型: バランス</button>
-      <button id="samuraiMirrorMode">samurAi内戦 OFF</button>
+      <button id="samuraiStyle" disabled>samurAi型: 攻撃3式</button>
       <button id="captureLoad" hidden>画面キャプチャ読込</button>
       <button id="manualOpen">手入力</button>
       <button id="compareOpen" hidden>MAKA比較</button>
@@ -4993,7 +4987,7 @@
       let lastAutoProgress = 0;
       let simStats = null;
       let benchmarkMode = false;
-      let samuraiStyle = "balance";
+      let samuraiStyle = "attack3";
       let samuraiMirrorMode = false;
       let legendNightMode = false;
       let legendPeekSeat = null;
@@ -5826,8 +5820,12 @@
         }
         if (ui.parallelSim) ui.parallelSim.textContent = parallelSimMode ? "検証2本 ON" : "検証2本 OFF";
         ui.benchmarkMode.textContent = benchmarkMode ? "強AI対戦 ON（全員Lv20）" : "強AI対戦 OFF";
-        if (ui.samuraiStyle) ui.samuraiStyle.textContent = `samurAi型: ${samuraiStyleLabel()}`;
-        if (ui.samuraiMirrorMode) ui.samuraiMirrorMode.textContent = samuraiMirrorMode ? "samurAi内戦 ON" : "samurAi内戦 OFF";
+        samuraiStyle = "attack3";
+        samuraiMirrorMode = false;
+        if (ui.samuraiStyle) {
+          ui.samuraiStyle.textContent = `samurAi型: ${samuraiStyleLabel()}`;
+          ui.samuraiStyle.disabled = true;
+        }
         const activeHand = autoCpuMode && game && game.phase !== "matchEnded" ? 1 : 0;
         const h = Math.max(1, simStats.hands + activeHand);
         const m = Math.max(1, simStats.matches);
@@ -5841,14 +5839,11 @@
           const d = Math.max(1, s.discards);
           return `${pct(s.danger80, d)} / ${pct(s.danger100, d)} / ${pct(s.betaori, d)} / ${pct(s.tenpaiPush, d)}`;
         };
-        const modeText = samuraiMirrorMode
-          ? "samurAi内戦 攻撃型 vs 守備型 vs バランス型"
-          : benchmarkMode ? `samurAi Lv20 ${samuraiStyleLabel()} vs 強AI Lv20` : "通常CPU";
+        const modeText = benchmarkMode ? `samurAi Lv20 ${samuraiStyleLabel()} vs 強AI Lv20` : "通常CPU";
         ui.simStats.innerHTML = `
           <span>モード</span><span>${modeText}</span>
           <span>AIレベル</span><span>${parallelLevelsText()}</span>
-          ${samuraiMirrorMode ? `<span>型</span><span>自家 ${samuraiMirrorLabelForSeat("me")} / 上家 ${samuraiMirrorLabelForSeat("a")} / 下家 ${samuraiMirrorLabelForSeat("b")}</span>` : ""}
-          <span>局/半荘</span><span>${simStats.hands} / ${simStats.matches}</span>
+<span>局/半荘</span><span>${simStats.hands} / ${simStats.matches}</span>
           <span>項目</span><span>和了/放銃/副露/立直/ダマ和了/役満/平均順位/平均打点</span>
           <span>自家</span><span>${lineFor("me")}</span>
           <span>上家</span><span>${lineFor("a")}</span>
@@ -5933,8 +5928,8 @@
         url.searchParams.set("lvA", String(ui.simLevelA?.value || 13));
         url.searchParams.set("lvB", String(ui.simLevelB?.value || 17));
         url.searchParams.set("benchmark", benchmarkMode ? "1" : "0");
-        url.searchParams.set("samuraiStyle", samuraiStyle);
-        url.searchParams.set("samuraiMirror", samuraiMirrorMode ? "1" : "0");
+        url.searchParams.set("samuraiStyle", "attack3");
+        url.searchParams.set("samuraiMirror", "0");
         url.hash = "";
         return url.href;
       }
@@ -5993,9 +5988,8 @@
         autoCpuMode = true;
         fastCpuMode = true;
         benchmarkMode = bootParams.get("benchmark") === "1";
-        samuraiStyle = ["attack", "attack2", "attack3", "defense", "balance", "adaptive"].includes(bootParams.get("samuraiStyle")) ? bootParams.get("samuraiStyle") : "balance";
-        samuraiMirrorMode = bootParams.get("samuraiMirror") === "1";
-        if (samuraiMirrorMode) benchmarkMode = false;
+        samuraiStyle = "attack3";
+        samuraiMirrorMode = false;
         battleMode = "free";
         gameStarted = true;
         seVolume = 0;
@@ -7401,7 +7395,7 @@
       }
 
       function samuraiStyleLabel() {
-        return samuraiStyle === "attack" ? "攻撃型" : samuraiStyle === "attack2" ? "攻撃型2号" : samuraiStyle === "attack3" ? "攻撃型3号" : samuraiStyle === "defense" ? "守備型" : samuraiStyle === "adaptive" ? "可変型" : "バランス型";
+        return samuraiStyle === "attack3" ? "攻撃3式" : samuraiStyle === "attack" ? "攻撃型" : samuraiStyle === "attack2" ? "攻撃型2号" : samuraiStyle === "defense" ? "守備型" : samuraiStyle === "adaptive" ? "可変型" : "バランス型";
       }
 
       function samuraiProfileForStyle(style) {
@@ -7414,7 +7408,7 @@
 
       function samuraiMirrorLabelForSeat(seat) {
         const style = samuraiMirrorStyleForSeat(seat);
-        return style === "attack" ? "攻撃型" : style === "attack2" ? "攻撃型2号" : style === "attack3" ? "攻撃型3号" : style === "defense" ? "守備型" : style === "adaptive" ? "可変型" : "バランス型";
+        return style === "attack3" ? "攻撃3式" : style === "attack" ? "攻撃型" : style === "attack2" ? "攻撃型2号" : style === "defense" ? "守備型" : style === "adaptive" ? "可変型" : "バランス型";
       }
 
       function aiProfileForSeat(seat) {
@@ -11203,67 +11197,17 @@
           render();
         });
       });
-      ui.simPresetGrid?.addEventListener("click", event => {
-        const button = event.target.closest("button[data-levels]");
-        if (!button) return;
-        const [me, a, b] = button.dataset.levels.split(",").map(Number);
-        setSimulationLevels(me, a, b);
-        setMessage("検証相手を変更", `samurAi Lv${me} / 上家 Lv${a} / 下家 Lv${b}で検証します。`);
-      });
       ui.benchmarkMode.addEventListener("click", () => {
         benchmarkMode = !benchmarkMode;
+        samuraiStyle = "attack3";
+        samuraiMirrorMode = false;
         if (benchmarkMode) {
-          samuraiMirrorMode = false;
           setSimulationLevels(20, 20, 20);
         } else {
           simStats = freshStats();
         }
         if (parallelSimMode) startParallelSim();
         setMessage(benchmarkMode ? "強AI対戦を開始できます" : "通常CPU検証に戻しました", benchmarkMode ? "全員Lv20です。自家はsamurAi最強、上家と下家は強AIベースラインで検証します。" : "通常の席別CPU設定で検証します。");
-        render();
-      });
-      ui.samuraiMirrorMode?.addEventListener("click", () => {
-        samuraiMirrorMode = !samuraiMirrorMode;
-        if (samuraiMirrorMode) {
-          benchmarkMode = false;
-          samuraiStyle = "attack";
-          setSimulationLevels(20, 20, 20);
-        } else {
-          simStats = freshStats();
-        }
-        if (parallelSimMode) startParallelSim();
-        setMessage(
-          samuraiMirrorMode ? "samurAi内戦を開始できます" : "samurAi内戦を終了",
-          samuraiMirrorMode
-            ? "自家=攻撃型、上家=守備型、下家=バランス型で全員Lv20の直接対決です。"
-            : "通常のCPU検証に戻しました。"
-        );
-        render();
-      });
-      ui.samuraiStyle?.addEventListener("click", () => {
-        if (samuraiMirrorMode) {
-          setMessage("内戦中は型固定", "自家=攻撃型、上家=守備型、下家=バランス型で検証しています。");
-          render();
-          return;
-        }
-        samuraiStyle = samuraiStyle === "balance" ? "adaptive" : samuraiStyle === "adaptive" ? "attack" : samuraiStyle === "attack" ? "attack2" : samuraiStyle === "attack2" ? "attack3" : samuraiStyle === "attack3" ? "defense" : "balance";
-        simStats = freshStats();
-        if (benchmarkMode) setSimulationLevels(20, 20, 20);
-        if (parallelSimMode) startParallelSim();
-        setMessage(
-          `samurAi ${samuraiStyleLabel()}に変更`,
-          samuraiStyle === "adaptive"
-            ? "攻撃型を軸に、リーチ・順位・終盤で自動的に締める可変Lv20です。"
-            : samuraiStyle === "attack"
-            ? "和了率28%級を狙って火力を上げた実験Lv20です。放銃率14.5%前後まで許容して見ます。"
-            : samuraiStyle === "attack2"
-            ? "試作攻撃型2号です。リーチ率16%前後、副露率30%前後を狙う鳴き火力型です。"
-            : samuraiStyle === "attack3"
-            ? "試作攻撃型3号です。攻撃型1号を軸に、跳満以上はダマ寄り、満貫以上の価値鳴きを自然に拾います。"
-            : samuraiStyle === "balance"
-              ? "天鳳位クラスの攻守バランスを意識したLv20です。和了と放銃の両方を見ます。"
-              : "放銃を抑えて平均順位を取りに行くLv20です。今の好成績版に近い設定です。"
-        );
         render();
       });
       ui.captureLoad.addEventListener("click", () => ui.captureInput.click());
