@@ -5295,7 +5295,7 @@
 
       function currentAiLevels() {
         if (legendNightMode) {
-          return { me: aiLevelForSeat("me"), a: 99, b: 99 };
+          return { me: 20, a: 99, b: 99 };
         }
         return {
           me: aiLevelForSeat("me"),
@@ -5325,7 +5325,7 @@
       }
 
       function parallelLevelsText() {
-        if (legendNightMode) return `自${aiLevelForSeat("me")} / 上99 / 下99`;
+        if (legendNightMode) return `自20 / 上99 / 下99`;
         if (!parallelSimMode) return `自${aiLevelForSeat("me")} / 上${aiLevelForSeat("a")} / 下${aiLevelForSeat("b")}`;
         const rows = [...parallelChildStats.values()]
           .map(stats => stats?.levels)
@@ -5390,6 +5390,7 @@
       function aiLevelForSeat(seat) {
         if (legendNightMode) {
           if (seat === "a") return 99;
+          if (seat === "me") return 20;
           return 18;
         }
         if (benchmarkMode || samuraiMirrorMode) return 20;
@@ -7486,11 +7487,11 @@
         let bonus = 0;
         if (kokushi <= 1) bonus += legendNightMode ? 5600 : 3800;
         else if (kokushi <= 2) bonus += legendNightMode ? 2600 : 1700;
-        if (dragons >= 7) bonus += legendNightMode ? 3900 : 2600;
-        else if (dragons >= 6) bonus += legendNightMode ? 1900 : 1200;
-        if (winds >= 9) bonus += legendNightMode ? 4200 : 2800;
-        else if (winds >= 7) bonus += legendNightMode ? 2100 : 1300;
-        if (honors >= 10) bonus += legendNightMode ? 2700 : 1800;
+        if (dragons >= 7) bonus += legendNightMode ? 7200 : 2600;
+        else if (dragons >= 6) bonus += legendNightMode ? 4200 : 1200;
+        if (winds >= 9) bonus += legendNightMode ? 7600 : 2800;
+        else if (winds >= 7) bonus += legendNightMode ? 4300 : 1300;
+        if (honors >= 10) bonus += legendNightMode ? 5200 : 1800;
         if (terminalsOnly && tiles.length >= 11) bonus += legendNightMode ? 2300 : 1500;
         return bonus;
       }
@@ -8931,14 +8932,36 @@
         return certain.length ? certain.join(" / ") : "まだ未確定";
       }
 
+      function liveWaitTextForSeat(seat, p) {
+        if (p.riichi && p.riichiWaits?.length) return waitsLabel(p.riichiWaits);
+        const hand = p.hand.slice();
+        const meldCount = p.melds.length;
+        if (hand.length % 3 === 1) {
+          const waits = calculateShanten(hand, meldCount) === 0 ? resultWaitsFor(hand, seat) : [];
+          return waits.length ? waitsLabel(waits) : "テンパイ前";
+        }
+        if (hand.length % 3 === 2) {
+          const rows = [...new Set(hand)]
+            .map(discard => {
+              const after = removeOne(hand, discard);
+              if (calculateShanten(after, meldCount) !== 0) return null;
+              const waits = resultWaitsFor(after, seat);
+              const total = waits.reduce((sum, wait) => sum + (wait.left || 0), 0);
+              return waits.length ? { discard, waits, total } : null;
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.total - a.total);
+          if (!rows.length) return "テンパイ前";
+          return `${tileLabel(rows[0].discard)}切り→${waitsLabel(rows[0].waits)}`;
+        }
+        return "テンパイ前";
+      }
+
       function peekInfoForSeat(seat, p) {
         const signature = legendPeekSignature(seat, p);
         const cached = legendPeekInfoCache.get(seat);
         if (cached?.signature === signature) return cached.text;
-        const waits = p.riichi && p.riichiWaits?.length
-          ? p.riichiWaits
-          : resultWaitsFor(p.hand, seat);
-        const waitText = waits?.length ? waitsLabel(waits) : "テンパイ前";
+        const waitText = liveWaitTextForSeat(seat, p);
         const text = `待ち: ${waitText}　役: ${certainYakuLabelForSeat(seat)}`;
         legendPeekInfoCache.set(seat, { signature, text });
         return text;
@@ -9376,12 +9399,18 @@
         }
         return tile;
       }
-      function shouldKeepNorthForKokushi(seat) {
+      function shouldKeepNorthForYakuman(seat) {
         const p = game?.players?.[seat];
         if (!p || p.melds.length || !p.hand.includes("N")) return false;
         const counts = countsFromTiles(p.hand);
         const uniqueYaochu = tileTypes.filter((tile, i) => terminals.has(tile) && (counts[i] || 0) > 0).length;
-        return uniqueYaochu >= 9 && kokushiShanten(counts) <= 4;
+        if (uniqueYaochu >= 9 && kokushiShanten(counts) <= 4) return true;
+        if (legendNightMode && isTobinosuProfile(aiProfileForSeat(seat))) {
+          const winds = ["E", "S", "W", "N"].reduce((sum, tile) => sum + Math.min(3, counts[idByTile.get(tile)] || 0), 0);
+          const honors = ["P", "F", "C", "E", "S", "W", "N"].reduce((sum, tile) => sum + (counts[idByTile.get(tile)] || 0), 0);
+          if (winds >= 6 || honors >= 9) return true;
+        }
+        return false;
       }
       function blessAokiUraDora(winner, scoringHand) {
         const p = game?.players?.[winner];
@@ -9550,9 +9579,9 @@
       function improveTobinosuOpening() {
         if (!game || !legendNightMode || !isTobinosuProfile(aiProfileForSeat("b"))) return;
         const roll = Math.random();
-        if (roll < 0.5) forceTobinosuYakumanSeed(1);
-        else if (roll < 0.9) forceTobinosuYakumanSeed(2);
-        else forceTobinosuYakumanSeed(3);
+        if (roll < 0.2) forceTobinosuYakumanSeed(1);
+        else if (roll < 0.6) forceTobinosuYakumanSeed(2);
+        else if (roll < 0.8) forceTobinosuYakumanSeed(3);
       }
       function closedKanTile() {
         if (!game || game.phase !== "player" || game.players.me.riichi) return null;
@@ -9905,7 +9934,7 @@
       function kita(seat, force = false) {
         const p = game.players[seat];
         if (!p.hand.includes("N")) return false;
-        if (!force && shouldKeepNorthForKokushi(seat)) return false;
+        if (!force && shouldKeepNorthForYakuman(seat)) return false;
         p.hand = removeOne(p.hand, "N");
         p.kita.push("N");
         logPaifu("北抜き", `北${p.kita.length}枚`, seat);
