@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
@@ -7308,7 +7308,8 @@
         }
 
         const seen = visible[idByTile.get(base)] || 0;
-        if (isSanmaManTerminal(base)) {
+        const sanmaManTerminal = isSanmaManTerminal(base);
+        if (sanmaManTerminal) {
           if (seen >= 4) return { danger: 0, safety: "萬子4枚見え" };
           if (seen >= 3) {
             danger = Math.min(danger, 8);
@@ -7317,8 +7318,15 @@
             danger = Math.min(danger, 22);
             safety = "萬子2枚見え";
           }
+          else if (player.riichi) {
+            danger = Math.min(danger, seen >= 1 ? 24 : 32);
+            safety = "sanma 1/9m";
+          } else {
+            danger = Math.min(danger, seen >= 1 ? 28 : 36);
+            safety = "sanma 1/9m";
+          }
         }
-        const sanmaManExhausted = isSanmaManTerminal(base) && seen >= 4;
+        const sanmaManExhausted = sanmaManTerminal && seen >= 4;
         if (honorSet.has(base) && seen >= 3) {
           danger = Math.min(danger, 10);
           safety = "字牌3枚見え";
@@ -7330,13 +7338,19 @@
           danger += riverRead.adjust;
           safety = riverRead.label ? `${safety}/${riverRead.label}` : safety;
         }
-        if (!sanmaManExhausted && isDora(base)) danger = Math.max(danger, 80);
+        if (!sanmaManTerminal && !sanmaManExhausted && isDora(base)) danger = Math.max(danger, 80);
         const doraAround = actualDoraTiles().some(d =>
           d.length === 2 && base.length === 2 && d[1] === base[1] &&
           Math.abs(Number(d[0]) - Number(base[0])) <= 1
         );
-        if (!sanmaManExhausted && doraAround) danger = Math.max(danger, 80);
+        if (!sanmaManTerminal && !sanmaManExhausted && doraAround) danger = Math.max(danger, 80);
         danger += turn * 3;
+        if (sanmaManTerminal) {
+          const cap = player.riichi
+            ? seen >= 3 ? 8 : seen >= 2 ? 22 : seen >= 1 ? 26 : 32
+            : seen >= 3 ? 10 : seen >= 2 ? 24 : seen >= 1 ? 30 : 38;
+          danger = Math.min(danger, cap);
+        }
         return { danger: Math.max(0, Math.min(100, danger)), safety };
       }
 
@@ -7693,8 +7707,9 @@
           reasons.push(`${tileLabel(chanceBlock.blocker)}が3枚見えで、${tileLabel(base)}をロンする良型待ちは少し薄い。ただし他の待ちは残る`);
         }
         const visibleSame = visible[idByTile.get(base)] || 0;
-        const sanmaManExhausted = isSanmaManTerminal(base) && visibleSame >= 4;
-        if (isSanmaManTerminal(base)) {
+        const sanmaManTerminal = isSanmaManTerminal(base);
+        const sanmaManExhausted = sanmaManTerminal && visibleSame >= 4;
+        if (sanmaManTerminal) {
           if (visibleSame >= 4) {
             danger = 0;
             reasons.push(`${tileLabel(base)}は三麻では順子待ちがなく、4枚見えなのでロンされません`);
@@ -7708,9 +7723,9 @@
             reasons.push(`${tileLabel(base)}は三麻では2〜8萬がないため、両面・嵌張・辺張待ちはありません`);
           }
         }
-        if (!sanmaManExhausted && isDora(base)) { danger = Math.max(danger, 80); reasons.push("ドラなのでかなり危険"); }
+        if (!sanmaManTerminal && !sanmaManExhausted && isDora(base)) { danger = Math.max(danger, 80); reasons.push("ドラなのでかなり危険"); }
         const doraAround = actualDoraTiles().some(d => d.length === 2 && base.length === 2 && d[1] === base[1] && Math.abs(Number(d[0]) - Number(base[0])) <= 1);
-        if (!sanmaManExhausted && doraAround) { danger = Math.max(danger, 80); reasons.push("ドラ周辺なので危険"); }
+        if (!sanmaManTerminal && !sanmaManExhausted && doraAround) { danger = Math.max(danger, 80); reasons.push("ドラ周辺なので危険"); }
         if (["P", "F", "C", "E", windForSeat("a"), windForSeat("b")].includes(base)) {
           danger += 20;
           reasons.push("役牌候補の字牌で危険");
@@ -7845,6 +7860,9 @@
           const aokiRiichiRonBlock = isAokiProfile(profile) && riichiPressure && wouldDealIntoRiichi(seat, tile);
           const opponentPressure = opponentAttackPressure(seat);
           const contestedPressure = riichiPressure || opponentPressure >= 1.1;
+          const riichiSafeSanmaManBonus = riichiPressure && isSanmaManTerminal(discardBase) && !allowKokushi
+            ? discardCount >= 3 ? 180 : 520
+            : 0;
           const latePressure = game.players[seat].river.length >= 10;
           const samuraiProfile = isSamuraiProfile(profile);
           const samuraiAdaptive = isSamuraiAdaptiveProfile(profile);
@@ -8008,7 +8026,8 @@
             placementBonus +
             riichiPotential +
             finalLeaderBonus +
-            sanmaManDiscardBonus -
+            sanmaManDiscardBonus +
+            riichiSafeSanmaManBonus -
             sanmaManKeepPenalty -
             blocks.isolatedPenalty +
             looseTerminalHonorBonus -
@@ -8050,6 +8069,7 @@
               placement: placementBonus,
               riichi: riichiPotential,
               manDiscard: sanmaManDiscardBonus,
+              riichiSafeMan: riichiSafeSanmaManBonus,
               manKeep: -sanmaManKeepPenalty,
               isolated: -blocks.isolatedPenalty,
               terminalHonor: looseTerminalHonorBonus,
@@ -9465,7 +9485,7 @@
       }
 
       function addKanDora() {
-        if (legendNightMode) return null;
+
         const indicator = drawFromWall() || game.wall.pop() || null;
         if (indicator) {
           game.dora ||= [];
