@@ -9465,16 +9465,20 @@
       }
 
       function addKanDora() {
-        if (legendNightMode) return;
-        const indicator = drawFromWall();
-        if (indicator) game.dora.push(indicator);
+        if (legendNightMode) return null;
+        const indicator = drawFromWall() || game.wall.pop() || null;
+        if (indicator) {
+          game.dora ||= [];
+          game.dora.push(indicator);
+        }
         const ura = game.wall[game.wall.length - 1];
         if (ura) {
           game.uraDora ||= [];
           game.uraDora.push(ura);
         }
+        if (ui?.doraTiles && game) renderDora();
+        return indicator;
       }
-
       function closedKanEvaluation() {
         const tile = closedKanTile();
         if (!tile) return null;
