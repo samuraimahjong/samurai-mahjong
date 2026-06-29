@@ -4991,6 +4991,7 @@
       let samuraiMirrorMode = false;
       let legendNightMode = false;
       let legendPeekSeat = null;
+      const legendPeekInfoCache = new Map();
       let aokiDoraBlessing = false;
       let matchType = "south";
       let battleMode = "free";
@@ -7779,10 +7780,52 @@
         }, 0);
       }
 
+      function legendFastDiscardPool(uniqueDiscards, p, profile) {
+        if (!legendNightMode || p === game.players.me || uniqueDiscards.length <= 9) return uniqueDiscards;
+        const counts = countsFromTiles(p.hand);
+        const doraBases = new Set(actualDoraTiles(false).map(baseTile));
+        const riichiPressure = seats.some(other => game.players[other] !== p && game.players[other].riichi);
+        const tobinosu = isTobinosuProfile(profile);
+        const aoki = isAokiProfile(profile);
+        return uniqueDiscards
+          .map(tile => {
+            const base = baseTile(tile);
+            const n = counts[idByTile.get(base)] || 0;
+            const honor = honorSet.has(base);
+            const term = terminals.has(base);
+            const manEdge = base === "1m" || base === "9m";
+            let linked = 0;
+            if (base.length === 2 && !base.endsWith("m")) {
+              const num = Number(base[0]), suit = base[1];
+              [-2, -1, 1, 2].forEach(d => {
+                const near = `${num + d}${suit}`;
+                if (idByTile.has(near) && p.hand.some(t => baseTile(t) === near)) linked++;
+              });
+            }
+            let score = 0;
+            if (tobinosu) {
+              score += term || honor ? -520 : 360;
+              if (base.length === 2 && !base.endsWith("m") && Number(base[0]) >= 3 && Number(base[0]) <= 7) score += 160;
+            } else {
+              if ((term || honor) && n === 1) score += 340;
+              if (manEdge) score += 420;
+              if (!linked && n === 1) score += 210;
+              if (base.length === 2 && !base.endsWith("m") && Number(base[0]) >= 3 && Number(base[0]) <= 7) score -= 120;
+            }
+            if (aoki && riichiPressure && wouldDealIntoRiichi(p === game.players.a ? "a" : "b", tile)) score -= 2500;
+            if (isRedDora(tile) || doraBases.has(base)) score -= 720;
+            if (n >= 2) score -= 260;
+            if (n >= 3) score -= 420;
+            return { tile, score };
+          })
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 9)
+          .map(row => row.tile);
+      }
       function evaluateDiscards(seat = "me") {
         const p = game.players[seat];
         const profile = aiProfileForSeat(seat);
-        const uniqueDiscards = [...new Set(p.hand)];
+        const uniqueDiscards = legendFastDiscardPool([...new Set(p.hand)], p, profile);
         const shantenForAfter = afterTiles => {
           const counts = countsFromTiles(afterTiles);
           const uniqueYaochu = tileTypes.filter((candidate, i) => terminals.has(candidate) && (counts[i] || 0) > 0).length;
@@ -8867,6 +8910,18 @@
         });
       }
 
+      function legendPeekSignature(seat, p) {
+        return [
+          seat,
+          p.hand.map(baseTile).join(","),
+          JSON.stringify(p.melds || []),
+          p.riichi ? "r1" : "r0",
+          (p.riichiWaits || []).map(wait => `${baseTile(wait.tile)}:${wait.left}`).join(","),
+          (game.dora || []).map(baseTile).join(","),
+          (game.uraDora || []).map(baseTile).join(",")
+        ].join("|");
+      }
+
       function certainYakuLabelForSeat(seat) {
         const value = estimateHandValue(game.players[seat].hand, seat, false);
         const certain = (value.yaku || [])
@@ -8877,11 +8932,16 @@
       }
 
       function peekInfoForSeat(seat, p) {
+        const signature = legendPeekSignature(seat, p);
+        const cached = legendPeekInfoCache.get(seat);
+        if (cached?.signature === signature) return cached.text;
         const waits = p.riichi && p.riichiWaits?.length
           ? p.riichiWaits
           : resultWaitsFor(p.hand, seat);
         const waitText = waits?.length ? waitsLabel(waits) : "テンパイ前";
-        return `待ち: ${waitText}　役: ${certainYakuLabelForSeat(seat)}`;
+        const text = `待ち: ${waitText}　役: ${certainYakuLabelForSeat(seat)}`;
+        legendPeekInfoCache.set(seat, { signature, text });
+        return text;
       }
 
       function renderOpponentHand(seat, el) {
@@ -10695,6 +10755,7 @@
       function startLegendNight() {
         legendNightMode = true;
         legendPeekSeat = null;
+        legendPeekInfoCache.clear();
         benchmarkMode = false;
         samuraiMirrorMode = false;
         samuraiStyle = "attack3";
@@ -10723,6 +10784,7 @@
       function toggleLegendPeek(seat) {
         if (!legendNightMode) return;
         legendPeekSeat = legendPeekSeat === seat ? null : seat;
+        if (legendPeekSeat) peekInfoForSeat(legendPeekSeat, game.players[legendPeekSeat]);
         render();
       }
 
