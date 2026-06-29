@@ -7485,13 +7485,13 @@
         const honors = ["P", "F", "C", "E", "S", "W", "N"].reduce((sum, tile) => sum + (counts[idByTile.get(tile)] || 0), 0);
         const terminalsOnly = tileTypes.reduce((ok, tile, i) => ok && (!(counts[i] || 0) || terminals.has(tile)), true);
         let bonus = 0;
-        if (kokushi <= 1) bonus += legendNightMode ? 5600 : 3800;
-        else if (kokushi <= 2) bonus += legendNightMode ? 2600 : 1700;
-        if (dragons >= 7) bonus += legendNightMode ? 7200 : 2600;
-        else if (dragons >= 6) bonus += legendNightMode ? 4200 : 1200;
-        if (winds >= 9) bonus += legendNightMode ? 7600 : 2800;
-        else if (winds >= 7) bonus += legendNightMode ? 4300 : 1300;
-        if (honors >= 10) bonus += legendNightMode ? 5200 : 1800;
+        if (kokushi <= 1) bonus += legendNightMode ? 7600 : 3800;
+        else if (kokushi <= 2) bonus += legendNightMode ? 3900 : 1700;
+        if (dragons >= 7) bonus += legendNightMode ? 11800 : 2600;
+        else if (dragons >= 6) bonus += legendNightMode ? 7600 : 1200;
+        if (winds >= 9) bonus += legendNightMode ? 12600 : 2800;
+        else if (winds >= 7) bonus += legendNightMode ? 8200 : 1300;
+        if (honors >= 10) bonus += legendNightMode ? 9200 : 1800;
         if (terminalsOnly && tiles.length >= 11) bonus += legendNightMode ? 2300 : 1500;
         return bonus;
       }
@@ -7511,25 +7511,25 @@
         let score = 0;
         const kokushiRoute = kokushi <= 4 && uniqueYaochu >= 9;
         if (kokushiRoute) {
-          score += (5 - kokushi) * (legendNightMode ? 2300 : 1500);
-          score += uniqueYaochu * 260 + yaochuPairs * 720;
+          score += (5 - kokushi) * (legendNightMode ? 3400 : 1500);
+          score += uniqueYaochu * (legendNightMode ? 420 : 260) + yaochuPairs * (legendNightMode ? 1150 : 720);
           score -= middleCount * 180;
           if (!terminals.has(discardBase)) score += 1250;
-          else if ((counts[idByTile.get(discardBase)] || 0) === 0) score -= 3600;
+          else if ((counts[idByTile.get(discardBase)] || 0) === 0) score -= legendNightMode ? 5600 : 3600;
           else score -= 1200;
         }
         if (dragons >= 5) {
-          score += dragons * 520 + (honorSet.has(discardBase) ? -900 : 520);
-          if (["P", "F", "C"].includes(discardBase) && (counts[idByTile.get(discardBase)] || 0) < 2) score -= 2400;
+          score += dragons * (legendNightMode ? 980 : 520) + (honorSet.has(discardBase) ? (legendNightMode ? -1800 : -900) : (legendNightMode ? 1400 : 520));
+          if (["P", "F", "C"].includes(discardBase) && (counts[idByTile.get(discardBase)] || 0) < 2) score -= legendNightMode ? 7200 : 2400;
         }
         if (winds >= 7) {
-          score += winds * 430 + (honorSet.has(discardBase) ? -680 : 420);
-          if (["E", "S", "W", "N"].includes(discardBase) && (counts[idByTile.get(discardBase)] || 0) < 2) score -= 2100;
+          score += winds * (legendNightMode ? 900 : 430) + (honorSet.has(discardBase) ? (legendNightMode ? -1600 : -680) : (legendNightMode ? 1300 : 420));
+          if (["E", "S", "W", "N"].includes(discardBase) && (counts[idByTile.get(discardBase)] || 0) < 2) score -= legendNightMode ? 6800 : 2100;
         }
         if (honors >= 9) {
-          score += honors * 360;
-          if (!honorSet.has(discardBase)) score += 900;
-          else if ((counts[idByTile.get(discardBase)] || 0) === 0) score -= 1900;
+          score += honors * (legendNightMode ? 760 : 360);
+          if (!honorSet.has(discardBase)) score += legendNightMode ? 1800 : 900;
+          else if ((counts[idByTile.get(discardBase)] || 0) === 0) score -= legendNightMode ? 5200 : 1900;
         }
         return score;
       }
@@ -9579,9 +9579,8 @@
       function improveTobinosuOpening() {
         if (!game || !legendNightMode || !isTobinosuProfile(aiProfileForSeat("b"))) return;
         const roll = Math.random();
-        if (roll < 0.2) forceTobinosuYakumanSeed(1);
-        else if (roll < 0.6) forceTobinosuYakumanSeed(2);
-        else if (roll < 0.8) forceTobinosuYakumanSeed(3);
+        if (roll < 0.4) forceTobinosuYakumanSeed(1);
+        else if (roll < 0.8) forceTobinosuYakumanSeed(2);
       }
       function closedKanTile() {
         if (!game || game.phase !== "player" || game.players.me.riichi) return null;
