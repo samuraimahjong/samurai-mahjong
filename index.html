@@ -9424,7 +9424,7 @@
             el.title = `${tileLabel(tile)}を切ると聴牌`;
           }
           if (drawn) el.classList.add("drawnTile");
-          el.disabled = game.phase !== "player" || !!pendingWin || (riichiLocked && !drawn) || (riichiSelectMode && !isRiichiChoice);
+          el.disabled = game.phase !== "player" || !!pendingWin || (riichiLocked && !drawn);
           el.addEventListener("mouseenter", () => highlightMatchingRiverTiles(tile));
           el.addEventListener("mouseenter", () => {
             if (!riichiSelectMode || !isRiichiChoice) return;
@@ -9440,7 +9440,8 @@
             renderWaits();
           });
           el.addEventListener("click", () => {
-            if (riichiSelectMode) return declareRiichiWithTile(tile);
+            if (riichiSelectMode && isRiichiChoice) return declareRiichiWithTile(tile);
+            if (riichiSelectMode) riichiSelectMode = false;
             playerDiscard(tile);
           });
           ui.hand.appendChild(el);
