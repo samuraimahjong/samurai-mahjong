@@ -4490,9 +4490,11 @@
           </div>
           <div class="tileSkinStatus" id="tileSkinStatus" hidden>任意: 1p.png, 2p.png, 9p.png, E.png などの名前で読み込むと、その牌画像に差し替えます。</div>
           <div class="ratingLine" id="ratingLine"></div>
-          <button class="startSubButton" id="lastReviewOpen" hidden>直前の棋譜を振り返る</button>
-          <button class="startSubButton" id="legendNightBtn">伝説の夜</button>
-          <button class="startButton" id="startGameBtn">対局開始</button>
+        <button class="startSubButton" id="lastReviewOpen" hidden>直前の棋譜を振り返る</button>
+        <button class="startSubButton" id="legendNightBtn">伝説の夜</button>
+        <button class="startSubButton" id="dopagakiModeBtn">ドパガキモード</button>
+        <button class="startSubButton" id="chiGameBtn">チー有り対局</button>
+        <button class="startButton" id="startGameBtn">対局開始</button>
           <section class="defenseCourse" id="defenseCourse" aria-label="初中級者向け防御力講座">
             <h2>初中級者向け防御力講座<br><small>~防御こそ三麻の神髄なり~</small></h2>
             <div class="defenseMenu" id="defenseMenu">
@@ -4889,6 +4891,7 @@
       </div>
       <div class="callBtns">
         <button id="ponBtn">ポン</button>
+        <button id="chiBtn">チー</button>
         <button id="kanBtn">カン</button>
         <button id="skipCallBtn">スルー</button>
       </div>
@@ -4993,6 +4996,7 @@
       let skippedTsumoSignature = "";
       let autoCpuMode = false;
       let fastCpuMode = false;
+      let chiMode = false;
       let stepCpuMode = false;
       let autoStepArmed = false;
       let pendingStepConfirm = null;
@@ -5014,6 +5018,7 @@
       let samuraiMirrorMode = false;
       let samuraiMirrorSet = "124";
       let legendNightMode = false;
+      let dopagakiMode = false;
       let legendPeekSeat = null;
       const legendPeekInfoCache = new Map();
       let aokiDoraBlessing = false;
@@ -5147,6 +5152,7 @@
         callTitle: document.getElementById("callTitle"),
         callDetail: document.getElementById("callDetail"),
         ponBtn: document.getElementById("ponBtn"),
+        chiBtn: document.getElementById("chiBtn"),
         kanBtn: document.getElementById("kanBtn"),
         skipCallBtn: document.getElementById("skipCallBtn"),
         winPrompt: document.getElementById("winPrompt"),
@@ -5203,6 +5209,8 @@
         ratingLine: document.getElementById("ratingLine"),
         lastReviewOpen: document.getElementById("lastReviewOpen"),
         legendNightBtn: document.getElementById("legendNightBtn"),
+        dopagakiModeBtn: document.getElementById("dopagakiModeBtn"),
+        chiGameBtn: document.getElementById("chiGameBtn"),
         legendPeekLeft: document.getElementById("legendPeekLeft"),
         legendPeekRight: document.getElementById("legendPeekRight"),
         tileSkinInput: document.getElementById("tileSkinInput"),
@@ -6627,6 +6635,10 @@
           player.river.forEach(tile => counts[idByTile.get(baseTile(tile))]++);
           player.kita.forEach(tile => counts[idByTile.get(baseTile(tile))]++);
           player.melds.forEach(meld => {
+            if (Array.isArray(meld.tiles) && meld.tiles.length) {
+              meld.tiles.forEach(tile => counts[idByTile.get(baseTile(tile))]++);
+              return;
+            }
             const count = meld.type === "kan" ? 4 : 3;
             counts[idByTile.get(baseTile(meld.tile))] += count;
           });
@@ -6771,9 +6783,39 @@
 
       function meldTiles(seat) {
         return game.players[seat].melds.flatMap(meld => {
+          if (Array.isArray(meld.tiles) && meld.tiles.length) return meld.tiles;
           const count = meld.type === "kan" ? 4 : 3;
           return Array(count).fill(meld.tile);
         });
+      }
+
+      function chiCombinations(hand, tile) {
+        if (!chiMode) return [];
+        const base = baseTile(tile);
+        if (!/^[1-9][ps]$/.test(base)) return [];
+        const n = Number(base[0]);
+        const suit = base[1];
+        const patterns = [[n - 2, n - 1], [n - 1, n + 1], [n + 1, n + 2]];
+        const combos = [];
+        patterns.forEach(nums => {
+          if (nums.some(v => v < 1 || v > 9)) return;
+          const handTiles = nums.map(v => `${v}${suit}`);
+          let temp = hand.slice();
+          for (const need of handTiles) {
+            if (!temp.some(t => sameTile(t, need))) return;
+            temp = removeOne(temp, need);
+          }
+          const tiles = [base, ...handTiles].sort((a, b) => Number(a[0]) - Number(b[0]));
+          combos.push({ handTiles, tiles });
+        });
+        return combos;
+      }
+
+      function canChiFrom(caller, discarder) {
+        if (!chiMode || !caller || !discarder || caller === discarder) return false;
+        const discarderIndex = turnOrder.indexOf(discarder);
+        if (discarderIndex < 0) return false;
+        return turnOrder[(discarderIndex + 1) % turnOrder.length] === caller;
       }
 
       function roundWindTile() {
@@ -6837,11 +6879,13 @@
       }
 
       function fixedGroups(seat) {
-        return game.players[seat].melds.map(meld => ({
-          kind: meld.type === "kan" ? "quad" : "triplet",
-          tile: baseTile(meld.tile),
-          open: meld.from !== "closed"
-        }));
+        return game.players[seat].melds.map(meld => meld.type === "chi"
+          ? { kind: "sequence", tiles: (meld.tiles || []).map(baseTile), tile: baseTile(meld.tile), open: true }
+          : {
+              kind: meld.type === "kan" ? "quad" : "triplet",
+              tile: baseTile(meld.tile),
+              open: meld.from !== "closed"
+            });
       }
 
       function addYaku(result, name, han) {
@@ -6966,6 +7010,7 @@
           if ((counts[idByTile.get(tile)] || 0) >= 2) fu += 2;
         });
         p.melds.forEach(meld => {
+          if (meld.type === "chi") return;
           const tile = baseTile(meld.tile);
           const hard = terminals.has(tile) || honorSet.has(tile);
           if (meld.type === "kan") fu += hard ? 16 : 8;
@@ -7008,6 +7053,7 @@
           }
         });
         game.players[seat].melds.forEach(meld => {
+          if (meld.type === "chi") return;
           const tile = baseTile(meld.tile);
           const hard = terminals.has(tile) || honorSet.has(tile);
           const fu = meld.type === "kan" ? (hard ? 16 : 8) : (hard ? 4 : 2);
@@ -8709,9 +8755,14 @@
         if (!pendingCall) return false;
         ui.hintTitle.textContent = "鳴き判断";
         const ev = callEvaluation(pendingCall.tile);
-        const bestCall = Math.max(ev.pon?.score ?? -9999, ev.kan?.score ?? -9999);
-        const callName = ev.kan && ev.kan.score >= (ev.pon?.score ?? -9999) ? "カン" : "ポン";
-        const callEv = callName === "カン" ? ev.kan : ev.pon;
+        const callChoices = [
+          ev.pon && { name: "ポン", ev: ev.pon },
+          ev.chi && { name: "チー", ev: ev.chi },
+          ev.kan && { name: "カン", ev: ev.kan }
+        ].filter(Boolean).sort((a, b) => b.ev.score - a.ev.score);
+        const callName = callChoices[0]?.name || "ポン";
+        const callEv = callChoices[0]?.ev;
+        const bestCall = callEv?.score ?? -9999;
         const callGood = callEv && callEv.guaranteedYaku && bestCall > ev.skipScore + 250;
         const line = document.createElement("div");
         line.className = "hintLine singleHint bestHint";
@@ -9559,10 +9610,13 @@
         function openMeldGroup(meld) {
           const group = document.createElement("div");
           group.className = "meldGroup";
-          const count = meld.type === "kan" ? 4 : 3;
+          const tiles = Array.isArray(meld.tiles) && meld.tiles.length
+            ? meld.tiles
+            : Array(meld.type === "kan" ? 4 : 3).fill(meld.tile);
+          const count = tiles.length;
           const calledIndex = meld.from === "a" ? 0 : meld.from === "b" ? count - 1 : -1;
           for (let i = 0; i < count; i++) {
-            const tileEl = makeTile(meld.tile, { small: true });
+            const tileEl = makeTile(tiles[i], { small: true });
             if (i === calledIndex) tileEl.classList.add(meld.from === "a" ? "calledFromA" : "calledFromB");
             group.appendChild(tileEl);
           }
@@ -9734,7 +9788,7 @@
         ui.wallCount.textContent = `余 ${liveWallCount()}`;
         const selfWind = tileLabel(windForSeat("me"));
         ui.roundCenter.textContent = roundLabel();
-        ui.roundName.textContent = `${roundLabel()}・${game.honba || 0}本場・${matchTypeLabel()}・自風 ${selfWind}・親 ${displayNameForSeat(game.dealer)}`;
+        ui.roundName.textContent = `${roundLabel()}・${game.honba || 0}本場・${matchTypeLabel()}${chiMode ? "・チー有り" : ""}・自風 ${selfWind}・親 ${displayNameForSeat(game.dealer)}`;
         const dealerPosition = game.dealer === "me" ? "自分" : game.dealer === "a" ? "左の人" : "右の人";
         ui.dealerInfo.textContent = `${displayNameForSeat(game.dealer)}（${dealerPosition}）: 親`;
         ui.kitaCount.textContent = Math.floor((game.pot || 0) / 1000);
@@ -10088,6 +10142,113 @@
         else if (roll < 0.5) forceTobinosuYakumanSeed(2, route);
       }
 
+      const dopagakiYakumanRoutes = ["kokushi", "daisangen", "suushi", "tsuiso", "daisusei", "ryuiso", "chuuren"];
+      const dopagakiRouteNames = {
+        kokushi: "国士無双",
+        daisangen: "大三元",
+        suushi: "四喜和",
+        tsuiso: "字一色",
+        daisusei: "大七星",
+        ryuiso: "緑一色",
+        chuuren: "九蓮宝燈"
+      };
+      function chooseDopagakiYakumanRoute() {
+        return dopagakiYakumanRoutes[Math.floor(Math.random() * dopagakiYakumanRoutes.length)];
+      }
+      function forceDopagakiYakumanSeed(targetDistance = 2, route = null) {
+        const seat = "me";
+        const p = game?.players?.[seat];
+        if (!p?.hand?.length) return false;
+        const selectedRoute = route || chooseDopagakiYakumanRoute();
+        if (selectedRoute === "daisusei") {
+          const honors = ["E", "S", "W", "N", "P", "F", "C"];
+          const targetPairs = targetDistance <= 1 ? 6 : targetDistance === 2 ? 5 : 4;
+          let guard = 0;
+          const pairCount = () => {
+            const counts = countsFromTiles(p.hand);
+            return honors.filter(tile => (counts[idByTile.get(tile)] || 0) >= 2).length;
+          };
+          while (pairCount() < targetPairs && guard++ < 90) {
+            const counts = countsFromTiles(p.hand);
+            const wanted = honors
+              .filter(tile => (counts[idByTile.get(tile)] || 0) < 2)
+              .sort((a, b) => (counts[idByTile.get(a)] || 0) - (counts[idByTile.get(b)] || 0) || Math.random() - 0.5)[0];
+            if (!wanted) break;
+            const changed = swapWallBaseIntoHand(seat, wanted, tile => !honors.includes(baseTile(tile)))
+              || swapWallBaseIntoHand(seat, wanted, tile => {
+                const base = baseTile(tile);
+                return honors.includes(base) && (counts[idByTile.get(base)] || 0) >= 3;
+              });
+            if (!changed) break;
+          }
+          return pairCount() >= targetPairs;
+        }
+        if (selectedRoute === "daisangen") {
+          const target = targetDistance <= 1 ? 8 : targetDistance === 2 ? 7 : 6;
+          return pullYakumanTilesIntoHand(seat, ["P", "F", "C"], target) >= target;
+        }
+        if (selectedRoute === "suushi") {
+          const target = targetDistance <= 1 ? 10 : targetDistance === 2 ? 9 : 8;
+          return pullYakumanTilesIntoHand(seat, ["E", "S", "W", "N"], target) >= target;
+        }
+        if (selectedRoute === "tsuiso") {
+          const target = targetDistance <= 1 ? 12 : targetDistance === 2 ? 11 : 10;
+          return pullYakumanTilesIntoHand(seat, ["E", "S", "W", "N", "P", "F", "C"], target) >= target;
+        }
+        if (selectedRoute === "ryuiso") {
+          const target = targetDistance <= 1 ? 12 : targetDistance === 2 ? 11 : 10;
+          return pullYakumanTilesIntoHand(seat, ["2s", "3s", "4s", "6s", "8s", "F"], target) >= target;
+        }
+        if (selectedRoute === "chuuren") {
+          const suit = Math.random() < 0.5 ? "p" : "s";
+          const target = targetDistance <= 1 ? 12 : targetDistance === 2 ? 11 : 10;
+          return pullYakumanTilesIntoHand(seat, ["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(n => `${n}${suit}`), target) >= target;
+        }
+        const yaochu = [...terminals];
+        const currentCounts = () => countsFromTiles(p.hand);
+        const kokushiDistance = () => kokushiShanten(currentCounts());
+        let guard = 0;
+        while (kokushiDistance() > targetDistance && guard++ < 80) {
+          const counts = currentCounts();
+          const missing = yaochu
+            .filter(tile => !(counts[idByTile.get(tile)] || 0))
+            .sort(() => Math.random() - 0.5);
+          let changed = false;
+          for (const wanted of missing) {
+            changed = swapWallBaseIntoHand(seat, wanted, tile => !terminals.has(baseTile(tile)));
+            if (!changed) {
+              changed = swapWallBaseIntoHand(seat, wanted, tile => {
+                const base = baseTile(tile);
+                return terminals.has(base) && (counts[idByTile.get(base)] || 0) >= 2;
+              });
+            }
+            if (changed) break;
+          }
+          const afterCounts = currentCounts();
+          const hasPair = yaochu.some(tile => (afterCounts[idByTile.get(tile)] || 0) >= 2);
+          if (!changed && !hasPair) {
+            const pairSource = yaochu
+              .filter(tile => (afterCounts[idByTile.get(tile)] || 0) >= 1)
+              .sort(() => Math.random() - 0.5)[0];
+            if (pairSource) changed = swapWallBaseIntoHand(seat, pairSource, tile => !terminals.has(baseTile(tile)));
+          }
+          if (!changed) break;
+        }
+        return kokushiDistance() <= targetDistance;
+      }
+      function improveDopagakiOpening() {
+        if (!game || !dopagakiMode || legendNightMode) return;
+        const route = chooseDopagakiYakumanRoute();
+        const roll = Math.random();
+        const targetDistance = roll < 0.55 ? 1 : roll < 0.85 ? 2 : 3;
+        const ok = forceDopagakiYakumanSeed(targetDistance, route)
+          || forceDopagakiYakumanSeed(2, "kokushi");
+        if (ok) {
+          game.players.me.hand = sortTiles(game.players.me.hand);
+          logPaifu("ドパガキモード", `${dopagakiRouteNames[route] || "役満"}寄せ配牌 ${shantenText(calculateShanten(game.players.me.hand, 0))}`, "me");
+        }
+      }
+
       function improveAokiOpening() {
         const seat = "a";
         if (!game || !legendNightMode || !isAokiProfile(aiProfileForSeat(seat))) return;
@@ -10323,9 +10484,9 @@
           }
           return best.score + bonus;
         };
-        const result = { skipScore: skipBest ? skipBest.score : 0, pon: null, kan: null };
+        const result = { skipScore: skipBest ? skipBest.score : 0, pon: null, chi: null, kan: null };
 
-        if (me.hand.filter(t => t === tile).length >= 2) {
+        if (me.hand.filter(t => sameTile(t, tile)).length >= 2) {
           const oldHand = me.hand.slice();
           const oldMelds = me.melds.slice();
           me.hand = removeOne(removeOne(me.hand, tile), tile);
@@ -10342,6 +10503,28 @@
           me.hand = oldHand;
           me.melds = oldMelds;
         }
+
+        const chiOptions = canChiFrom("me", pendingCall?.from) ? chiCombinations(me.hand, tile) : [];
+        chiOptions.forEach(combo => {
+          const oldHand = me.hand.slice();
+          const oldMelds = me.melds.slice();
+          me.hand = removeOne(removeOne(me.hand, combo.handTiles[0]), combo.handTiles[1]);
+          me.melds = oldMelds.concat({ type: "chi", tile, tiles: combo.tiles, from: pendingCall?.from });
+          const best = evaluateDiscards("me")[0];
+          const value = best ? best.value : estimateHandValue(me.hand, "me");
+          const chiEval = {
+            score: callBonus(best, value, me.hand) - 180,
+            shanten: best ? best.shanten : 8,
+            ukeire: best ? best.ukeire.total : 0,
+            value,
+            handTiles: combo.handTiles,
+            tiles: combo.tiles,
+            guaranteedYaku: value.realHan > 0
+          };
+          if (!result.chi || chiEval.score > result.chi.score) result.chi = chiEval;
+          me.hand = oldHand;
+          me.melds = oldMelds;
+        });
 
         if (countBaseInHand(me.hand, tile) >= 3) {
           const oldHand = me.hand.slice();
@@ -10368,7 +10551,10 @@
       function offerCall(from, tile, nextIndex) {
         const me = game.players.me;
         if (me.riichi) return false;
-        if (me.hand.filter(t => t === tile).length < 2) return false;
+        const canPon = me.hand.filter(t => sameTile(t, tile)).length >= 2;
+        const canKan = countBaseInHand(me.hand, tile) >= 3;
+        const canChi = canChiFrom("me", from) && chiCombinations(me.hand, tile).length > 0;
+        if (!canPon && !canKan && !canChi) return false;
         pendingCall = { from, tile, nextIndex };
         game.phase = "call";
         if (autoCpuMode) {
@@ -10378,9 +10564,11 @@
         const ev = callEvaluation(tile);
         const options = [];
         if (ev.pon) options.push(`ポン: ${shantenText(ev.pon.shanten)} / 有効牌${ev.pon.ukeire}枚 / 打点${ev.pon.value.points}`);
+        if (ev.chi) options.push(`チー: ${shantenText(ev.chi.shanten)} / 有効牌${ev.chi.ukeire}枚 / 打点${ev.chi.value.points}`);
         if (ev.kan) options.push(`カン: ${shantenText(ev.kan.shanten)} / 有効牌${ev.kan.ukeire}枚 / 打点${ev.kan.value.points}`);
-        const bestCall = Math.max(ev.pon?.score ?? -9999, ev.kan?.score ?? -9999);
-        const bestCallEv = ev.kan && ev.kan.score >= (ev.pon?.score ?? -9999) ? ev.kan : ev.pon;
+        const callChoices = [ev.pon, ev.chi, ev.kan].filter(Boolean);
+        const bestCallEv = callChoices.sort((a, b) => b.score - a.score)[0];
+        const bestCall = bestCallEv?.score ?? -9999;
         const advice = bestCallEv?.guaranteedYaku && bestCall > ev.skipScore + 250 ? "鳴き推奨" : "スルー寄り";
         if (battleMode === "rate") {
           ui.callTitle.textContent = `${tileLabel(tile)}を鳴けます`;
@@ -10390,8 +10578,10 @@
           ui.callDetail.textContent = options.length ? `${options.join(" / ")}。スルーなら門前と守備力を残します。` : "スルーなら門前と守備力を残します。";
         }
         ui.ponBtn.hidden = !ev.pon;
+        ui.chiBtn.hidden = !ev.chi;
         ui.kanBtn.hidden = !ev.kan;
         ui.ponBtn.disabled = !ev.pon;
+        ui.chiBtn.disabled = !ev.chi;
         ui.kanBtn.disabled = !ev.kan;
 
         render();
@@ -10497,7 +10687,21 @@
         scheduleAutoCpu();
       }
 
-      function kita(seat, force = false) {
+      function handleKitaRon(declarer, nextIndex = 0) {
+        const winners = seats.filter(seat => seat !== declarer && canRon(seat, "N"));
+        if (!winners.length) return false;
+        const winner = winners.includes("me") ? "me" : winners[0];
+        game.lastRonTile = "N";
+        game.lastRonFromKita = true;
+        logPaifu("北抜きロン", `${seatName[declarer]}の北`, winner);
+        if (winner === "me") {
+          offerWin("ron", "N", declarer, nextIndex, { fromKita: true });
+          return "ron";
+        }
+        announceWinThenSettle(winner, declarer, "ron");
+        return "ron";
+      }
+      function kita(seat, force = false, nextIndex = 0) {
         const p = game.players[seat];
         if (!p.hand.includes("N")) return false;
         if (!force && shouldKeepNorthForYakuman(seat)) return false;
@@ -10666,7 +10870,7 @@
         if (game.players.me.riichi) return skipCall();
         const tile = pendingCall.tile;
         const me = game.players.me;
-        if (me.hand.filter(t => t === tile).length < 2) return;
+        if (me.hand.filter(t => sameTile(t, tile)).length < 2) return;
         removeCalledDiscard();
         me.hand = removeOne(removeOne(me.hand, tile), tile);
         me.melds.push({ type: "pon", tile, from: pendingCall.from });
@@ -10675,6 +10879,28 @@
         pendingCall = null;
         game.phase = "player";
         setMessage(`${tileLabel(tile)}をポン`, "鳴き後の打牌を選んでください。候補評価は鳴き面子込みです。");
+        sfx("call");
+        if (!autoCpuMode || !fastCpuMode) render();
+        scheduleAutoCpu();
+      }
+
+      function doChi() {
+        if (!pendingCall) return;
+        if (game.players.me.riichi) return skipCall();
+        const tile = pendingCall.tile;
+        const from = pendingCall.from;
+        const ev = callEvaluation(tile);
+        const chi = ev.chi;
+        if (!chi) return;
+        const me = game.players.me;
+        removeCalledDiscard();
+        me.hand = removeOne(removeOne(me.hand, chi.handTiles[0]), chi.handTiles[1]);
+        me.melds.push({ type: "chi", tile, tiles: chi.tiles, from });
+        recordStat("me", "calls");
+        logPaifu("チー", `${chi.tiles.map(tileLabel).join("")} from ${seatName[from]}`, "me");
+        pendingCall = null;
+        game.phase = "player";
+        setMessage(`${tileLabel(tile)}をチー`, "鳴き後の打牌を選んでください。チー有り対局だけの特別ルールです。");
         sfx("call");
         if (!autoCpuMode || !fastCpuMode) render();
         scheduleAutoCpu();
@@ -10720,7 +10946,7 @@
 
       function cpuCallEvaluation(caller, tile) {
         const p = game.players[caller];
-        if (p.riichi || p.hand.filter(t => t === tile).length < 2) return null;
+        if (p.riichi || p.hand.filter(t => sameTile(t, tile)).length < 2) return null;
         const current = calculateShanten(p.hand, p.melds.length);
         if (isTobinosuProfile(aiProfileForSeat(caller)) && p.melds.length === 0) {
           const counts = countsFromTiles(p.hand);
@@ -10838,13 +11064,69 @@
         }
         p.hand = oldHand;
         p.melds = oldMelds;
-        return { score, discard: best?.tile, shantenGain, after, guaranteedYaku, value };
+        return { kind: "pon", score, discard: best?.tile, shantenGain, after, guaranteedYaku, value };
+      }
+
+      function cpuChiEvaluation(caller, tile, discarder) {
+        const p = game.players[caller];
+        if (p.riichi || !canChiFrom(caller, discarder)) return null;
+        const combos = chiCombinations(p.hand, tile);
+        if (!combos.length) return null;
+        const current = calculateShanten(p.hand, p.melds.length);
+        let bestCall = null;
+        for (const combo of combos) {
+          const oldHand = p.hand.slice();
+          const oldMelds = p.melds.slice();
+          p.hand = removeOne(removeOne(p.hand, combo.handTiles[0]), combo.handTiles[1]);
+          p.melds = oldMelds.concat({ type: "chi", tile, tiles: combo.tiles, from: discarder });
+          const rows = withAiThinking(caller, () => evaluateDiscards(caller));
+          const best = rows[0];
+          const value = best ? best.value : estimateHandValue(p.hand, caller);
+          const after = best?.shanten ?? calculateShanten(p.hand, p.melds.length);
+          const blocks = blockAnalysis(p.hand);
+          const shantenGain = current - after;
+          const guaranteedYaku = value.realHan > 0;
+          const callerProfile = aiProfileForSeat(caller);
+          const callerAttack = isSamuraiAttackProfile(callerProfile) || isSamuraiAttack2Profile(callerProfile) || isSamuraiAttack3Profile(callerProfile) || isSamuraiAttack5Profile(callerProfile);
+          let score = (best?.score ?? 0) - 240;
+          if (after === 0) score += callerAttack ? 720 : 460;
+          if (after === 1) score += callerAttack ? 420 : 260;
+          score += Math.max(0, shantenGain) * (callerAttack ? 560 : 360);
+          if (guaranteedYaku) score += 220;
+          if (value.points >= 3900 || value.han >= 3 || blocks.dora >= 1) score += callerAttack ? 380 : 220;
+          if (!guaranteedYaku || value.noYakuRisk) score -= 900;
+          if (shantenGain <= 0) score -= 650;
+          if (seats.some(other => other !== caller && game.players[other].riichi)) score -= value.points >= 5200 ? 260 : 740;
+          const ev = {
+            kind: "chi",
+            score,
+            discard: best?.tile,
+            shantenGain,
+            after,
+            guaranteedYaku,
+            value,
+            handTiles: combo.handTiles,
+            tiles: combo.tiles
+          };
+          if (!bestCall || ev.score > bestCall.score) bestCall = ev;
+          p.hand = oldHand;
+          p.melds = oldMelds;
+        }
+        return bestCall;
+      }
+
+      function cpuBestCallEvaluation(caller, tile, discarder) {
+        const options = [
+          cpuCallEvaluation(caller, tile),
+          cpuChiEvaluation(caller, tile, discarder)
+        ].filter(Boolean);
+        return options.sort((a, b) => b.score - a.score)[0] || null;
       }
 
       function tryCpuCall(discarder, tile, nextIndex) {
         const candidates = seats.filter(seat => seat !== "me" && seat !== discarder);
         for (const caller of candidates) {
-          const ev = cpuCallEvaluation(caller, tile);
+          const ev = cpuBestCallEvaluation(caller, tile, discarder);
           const profile = aiProfileForSeat(caller);
           const level = aiLevelForSeat(caller);
           const adaptiveCallGuard = isSamuraiAdaptiveProfile(profile) && seats.some(other => other !== caller && game.players[other].riichi);
@@ -10866,16 +11148,23 @@
           const idx = river.findLastIndex(entry => sameTile(entry, tile));
           if (idx >= 0) river.splice(idx, 1);
           const p = game.players[caller];
-          p.hand = removeOne(removeOne(p.hand, tile), tile);
-          p.melds.push({ type: "pon", tile, from: discarder });
+          if (ev.kind === "chi") {
+            p.hand = removeOne(removeOne(p.hand, ev.handTiles[0]), ev.handTiles[1]);
+            p.melds.push({ type: "chi", tile, tiles: ev.tiles, from: discarder });
+          } else {
+            p.hand = removeOne(removeOne(p.hand, tile), tile);
+            p.melds.push({ type: "pon", tile, from: discarder });
+          }
           recordStat(caller, "calls");
-          logPaifu("ポン", `${tileLabel(tile)} from ${seatName[discarder]}`, caller);
+          logPaifu(ev.kind === "chi" ? "チー" : "ポン", `${ev.kind === "chi" ? ev.tiles.map(tileLabel).join("") : tileLabel(tile)} from ${seatName[discarder]}`, caller);
           const rows = withAiThinking(caller, () => evaluateDiscards(caller));
           const pickRows = isAokiProfile(profile) ? aokiSafeRows(caller, rows) : rows;
           const pick = pickRows[0];
           const discard = pick?.tile || p.hand[Math.floor(Math.random() * p.hand.length)];
           if (legendNightMode && isTobinosuProfile(aiProfileForSeat(caller)) && baseTile(discard) === "N") {
-            if (kita(caller, true)) return true;
+            const callerKitaResult = kita(caller, true, nextIndex);
+            if (callerKitaResult === "ron") return true;
+            if (callerKitaResult) return true;
           }
           p.hand = removeOne(p.hand, discard);
           showDiscardHand(caller);
@@ -10885,7 +11174,7 @@
           recordDiscardStat(caller, pick);
           game.houteiSeat = liveWallCount() === 0 ? caller : null;
           if (canRon("me", discard)) return offerWin("ron", discard, caller, nextIndex) && true;
-          setMessage(`${seatName[caller]}のポン`, `${tileLabel(tile)}を鳴きました。`);
+          setMessage(`${seatName[caller]}の${ev.kind === "chi" ? "チー" : "ポン"}`, `${tileLabel(tile)}を鳴きました。`);
           return true;
         }
         return false;
@@ -10944,7 +11233,9 @@
           || (p.riichi && p.drawnTile ? p.drawnTile : null)
           || (pick ? pick.tile : p.hand[Math.floor(Math.random() * p.hand.length)]);
         if (!forcedRiichiDiscard && legendNightMode && isTobinosuProfile(profile) && baseTile(discard) === "N") {
-          if (kita(seat, true)) return cpuDiscard(seat, nextIndex);
+          const forcedKitaResult = kita(seat, true, nextIndex);
+          if (forcedKitaResult === "ron") return false;
+          if (forcedKitaResult) return cpuDiscard(seat, nextIndex);
         }
         p.hand = removeOne(p.hand, discard);
         p.drawnTile = null;
@@ -11108,7 +11399,10 @@
         if (!autoCpuMode || game.phase !== "player" || pendingCall || pendingWin) return;
         markAutoProgress();
         const me = game.players.me;
-        while (me.hand.includes("N")) kita("me");
+        while (me.hand.includes("N")) {
+          const kitaResult = kita("me");
+          if (kitaResult === "ron" || !kitaResult) return;
+        }
         if (canWin("me", "tsumo")) return announceWinThenSettle("me", null, "tsumo");
         const kanEval = closedKanEvaluation();
         const kanChance = aiLevelForSeat("me") >= 14 ? 1 : 0.6;
@@ -11155,9 +11449,16 @@
         const level = aiLevelForSeat("me");
         const profile = aiProfileForSeat("me");
         const bestPon = ev.pon?.score ?? -9999;
+        const bestChi = ev.chi?.score ?? -9999;
         const bestKan = ev.kan?.score ?? -9999;
-        const bestCall = Math.max(bestPon, bestKan);
-        const bestCallEv = bestKan >= bestPon ? ev.kan : ev.pon;
+        const callChoices = [
+          ev.pon && { kind: "pon", ev: ev.pon, score: bestPon },
+          ev.chi && { kind: "chi", ev: ev.chi, score: bestChi },
+          ev.kan && { kind: "kan", ev: ev.kan, score: bestKan }
+        ].filter(Boolean).sort((a, b) => b.score - a.score);
+        const bestCallChoice = callChoices[0];
+        const bestCall = bestCallChoice?.score ?? -9999;
+        const bestCallEv = bestCallChoice?.ev;
         const callAsAttack2 = isSamuraiAttack2Profile(profile);
         const callAsAttack = isSamuraiAttackProfile(profile) || callAsAttack2 || isSamuraiAdaptiveProfile(profile);
         const callAsBalance = isSamuraiBalanceProfile(profile);
@@ -11176,8 +11477,9 @@
         const level17GoodCall = level >= 17 && bestCallEv?.guaranteedYaku && shapeImproves && valuePush;
         const aggressiveGoodCall = callAsAttack && bestCallEv?.guaranteedYaku && shapeImproves && (attackFastCall || attackValueCall || callAsAttack2);
         if (bestCallEv?.guaranteedYaku && shapeImproves && (!callAsAttack || attackFastCall || attackValueCall || callAsAttack2) && bestCall > ev.skipScore + (aggressiveGoodCall ? Math.min(requiredLead, callAsAttack2 ? 160 : -140) : level17GoodCall ? Math.min(requiredLead, 180) : requiredLead)) {
-          if (bestKan >= bestPon && ev.kan) return doKan();
-          if (ev.pon) return doPon();
+          if (bestCallChoice?.kind === "kan") return doKan();
+          if (bestCallChoice?.kind === "chi") return doChi();
+          if (bestCallChoice?.kind === "pon") return doPon();
         }
         skipCall();
       }
@@ -11256,7 +11558,9 @@
         pendingWin = null;
         riichiSelectMode = false;
         legendNightMode = false;
+        dopagakiMode = false;
         legendPeekSeat = null;
+        chiMode = false;
         gameStarted = false;
         closeDefenseTopic();
         document.body.classList.toggle("rateMode", ui.battleMode?.value === "rate");
@@ -11321,6 +11625,8 @@
           dora: [],
           uraDora: [],
           tobinosuYakumanRoute: null,
+          lastRonTile: null,
+          lastRonFromKita: false,
           rinshanDraw: null,
           haiteiSeat: null,
           houteiSeat: null,
@@ -11337,6 +11643,7 @@
         game.dora.push(drawFromWall());
         game.uraDora.push(game.wall[game.wall.length - 1] || "5p");
         for (let i = 0; i < 13; i++) seats.forEach(seat => game.players[seat].hand.push(drawFromWall()));
+        improveDopagakiOpening();
         grantAokiDoraBlessing();
         improveAokiOpening();
         improveTobinosuOpening();
@@ -11355,9 +11662,11 @@
         newRound(game?.phase === "matchEnded" ? false : true);
       }
 
-      function startGameFromMenu() {
+      function startGameFromMenu(options = {}) {
         legendNightMode = false;
+        dopagakiMode = !!options.dopagaki;
         legendPeekSeat = null;
+        chiMode = !!options.chi;
         if (ui.cpuLevel) ui.cpuLevel.value = "5";
         matchType = ui.matchType?.value || "south";
         battleMode = ui.battleMode?.value || "free";
@@ -11368,14 +11677,18 @@
         document.body.classList.toggle("rateMode", battleMode === "rate");
         gameStarted = true;
         ui.startOverlay.classList.add("hidden");
-        showBanner(battleMode === "rate" ? "レート戦開始" : "対局開始");
+        showBanner(dopagakiMode ? "ドパガキモード" : chiMode ? "チー有り対局" : battleMode === "rate" ? "レート戦開始" : "対局開始");
+        if (dopagakiMode) setMessage("ドパガキモード", "自分の配牌だけ役満寄りになります。相手の配牌は通常どおりです。");
+        if (chiMode) setMessage("チー有り対局", "三人麻雀ですが、上家の捨て牌からチーできます。");
         sfx("win");
         window.setTimeout(() => newRound(false), 620);
       }
 
       function startLegendNight() {
         legendNightMode = true;
+        dopagakiMode = false;
         legendPeekSeat = null;
+        chiMode = false;
         legendPeekInfoCache.clear();
         benchmarkMode = false;
         samuraiMirrorMode = false;
@@ -11591,6 +11904,8 @@
       setupManualEditorDrag();
       courseSections().forEach(course => course.addEventListener("click", handleCourseClick));
       ui.startGameBtn?.addEventListener("click", startGameFromMenu);
+      ui.chiGameBtn?.addEventListener("click", () => startGameFromMenu({ chi: true }));
+      ui.dopagakiModeBtn?.addEventListener("click", () => startGameFromMenu({ dopagaki: true }));
       ui.legendNightBtn?.addEventListener("click", startLegendNight);
       ui.titleReturn?.addEventListener("click", () => returnToTitle(true));
       ui.legendPeekLeft?.addEventListener("click", () => toggleLegendPeek("a"));
@@ -11840,6 +12155,7 @@
         renderRateReview();
       });
       ui.ponBtn.addEventListener("click", doPon);
+      ui.chiBtn.addEventListener("click", doChi);
       ui.kanBtn.addEventListener("click", doKan);
       ui.skipCallBtn.addEventListener("click", skipCall);
       ui.bgmVolume.addEventListener("input", () => {
@@ -12042,6 +12358,7 @@
   </script>
 </body>
 </html>
+
 
 
 
