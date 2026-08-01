@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://samurai-mahjong.netlify.app/sitemap.xml
